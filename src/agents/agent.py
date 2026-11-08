@@ -158,6 +158,7 @@ class Agent:
 
     current_month: int = 0
     history_id: Optional[str] = None
+    household_id: Optional[str] = None
 
     def validate(self, vocabulary=None):
         """Validate the agent's identity, profile and state."""
@@ -177,6 +178,7 @@ class Agent:
         return {
             "agent_id": self.agent_id,
             "history_id": self.history_id,
+            "household_id": self.household_id,
             "current_month": self.current_month,
 
             "age_group": self.profile.age_group,

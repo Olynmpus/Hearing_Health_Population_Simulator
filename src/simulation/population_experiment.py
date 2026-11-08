@@ -23,6 +23,34 @@ from src.service_capacity.workforce import WorkforceMember
 from src.service_delivery.delivery import create_service_delivery
 from src.interventions.loader import load_intervention
 from src.service_capacity.planned_schedule import PlannedServiceSchedule
+from src.agents.relationships import SocialRelationship
+
+def create_household_relationships(agents):
+    """Create reciprocal family relationships within synthetic households."""
+
+    households = {}
+
+    for agent in agents:
+        if agent.household_id is not None:
+            households.setdefault(agent.household_id, []).append(agent)
+
+    relationships = []
+
+    for household_members in households.values():
+        for agent in household_members:
+            for other_agent in household_members:
+                if agent.agent_id == other_agent.agent_id:
+                    continue
+
+                relationship = SocialRelationship(
+                    agent_id=agent.agent_id,
+                    contact_id=other_agent.agent_id,
+                    relationship_type="family",
+                )
+                relationship.validate()
+                relationships.append(relationship)
+
+    return relationships
 
 def generate_remote_round_trip_travel_hours(random_seed):
     """Generate a reproducible illustrative remote travel time."""
@@ -48,6 +76,8 @@ class PopulationExperiment:
     evidence_status: str
     agents: list
     support_records: list
+    relationships: list
+    relationship_evidence_status: str | None = None
     intervention: object | None = None
 
     def summary(self):
@@ -316,6 +346,7 @@ def allocate_monthly_service_demands(
     planned_schedule,
     duration_months,
     remote_schedule=None,
+    remote_travel_hours=None,
 ):
     """Allocate monthly requests against planned service capacity."""
 
@@ -349,7 +380,13 @@ def allocate_monthly_service_demands(
             planned_schedule=planned_schedule,
         )
 
-        if remote_schedule is not None and month in (0, 3, 6, 9):
+        
+        if (
+            remote_schedule is not None
+            and remote_travel_hours is not None
+            and remote_travel_hours <= 4
+            and month in (0, 3, 6, 9)
+        ):
             remote_demands = [
                 demand
                 for demand in monthly_demands
@@ -497,6 +534,16 @@ def run_population_experiment(
         country_profile=country_profile,
     )
 
+    relationships = create_household_relationships(agents)
+
+    household_config = experiment_config.get(
+        "population", {}
+    ).get("households", {})
+
+    relationship_evidence_status = household_config.get(
+        "evidence_status"
+    )
+
     support_records = create_hearing_support_records(agents)
 
     support_records = initialise_hearing_support_needs(
@@ -510,18 +557,27 @@ def run_population_experiment(
     )
     planned_schedule = create_experiment_service_schedule()
 
+
+    remote_travel_hours = (
+        generate_remote_round_trip_travel_hours(
+            experiment_config["simulation"].get("random_seed")
+        )
+        if intervention is not None
+        else None
+    )
+
     remote_schedule = (
         create_remote_service_schedule()
         if intervention is not None
         else None
     )
-
     support_records = allocate_monthly_service_demands(
         agents=agents,
         support_records=support_records,
         planned_schedule=planned_schedule,
         duration_months=experiment_config["simulation"]["duration_months"],
         remote_schedule=remote_schedule,
+        remote_travel_hours=remote_travel_hours,
     )
 
     support_records = record_monthly_service_delivery(
@@ -547,5 +603,7 @@ def run_population_experiment(
         evidence_status=distribution_config["evidence_status"],
         agents=agents,
         support_records=support_records,
+        relationships=relationships,
+        relationship_evidence_status=relationship_evidence_status,
         intervention=intervention,
     )

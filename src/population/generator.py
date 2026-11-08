@@ -57,6 +57,58 @@ def _validate_weights(name, categories, weights):
 
     return values
 
+def _assign_households(agents, household_config, seed):
+    """Assign agents to synthetic households using explicit assumptions."""
+
+    if household_config.get("evidence_status") != "simulation_assumption":
+        raise ValueError(
+            "Household settings must be labelled simulation_assumption."
+        )
+
+    size_weights = household_config.get("size_weights")
+
+    if not isinstance(size_weights, dict) or not size_weights:
+        raise ValueError("Household size weights must be a dictionary.")
+
+    categories = list(size_weights.keys())
+    _validate_categories("household sizes", categories)
+
+    weights = _validate_weights(
+        "household sizes",
+        categories,
+        size_weights,
+    )
+
+    sizes = [int(size) for size in categories]
+
+    if any(size <= 0 for size in sizes):
+        raise ValueError("Household sizes must be positive integers.")
+
+    rng = random.Random(None if seed is None else seed + 1)
+    shuffled_agents = list(agents)
+    rng.shuffle(shuffled_agents)
+
+    remaining = len(shuffled_agents)
+    position = 0
+    household_number = 1
+
+    while remaining > 0:
+        household_size = rng.choices(
+            sizes,
+            weights=weights,
+            k=1,
+        )[0]
+
+        assigned_size = min(household_size, remaining)
+        household_id = f"HOUSEHOLD-{household_number:06d}"
+
+        for agent in shuffled_agents[position:position + assigned_size]:
+            agent.household_id = household_id
+
+        position += assigned_size
+        remaining -= assigned_size
+        household_number += 1
+
 
 def generate_population(
     experiment_config,
@@ -192,5 +244,10 @@ def generate_population(
 
         agent.validate(vocabulary)
         agents.append(agent)
+
+    household_config = population_config.get("households")
+
+    if household_config is not None:
+        _assign_households(agents, household_config, seed)
 
     return agents
