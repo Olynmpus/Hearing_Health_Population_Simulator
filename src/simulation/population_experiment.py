@@ -25,17 +25,18 @@ from src.interventions.loader import load_intervention
 from src.service_capacity.planned_schedule import PlannedServiceSchedule
 from src.agents.relationships import SocialRelationship
 
-def create_household_relationships(agents):
-    """Create reciprocal family relationships within synthetic households."""
+def create_household_relationships(agents, random_seed=None):
+    """Create family and illustrative non-family social relationships."""
 
     households = {}
 
-    for agent in agents:
+    for agent in sorted(agents, key=lambda item: item.agent_id):
         if agent.household_id is not None:
             households.setdefault(agent.household_id, []).append(agent)
 
     relationships = []
 
+    # Preserve existing reciprocal family relationships.
     for household_members in households.values():
         for agent in household_members:
             for other_agent in household_members:
@@ -50,7 +51,52 @@ def create_household_relationships(agents):
                 relationship.validate()
                 relationships.append(relationship)
 
+    # Use a separate random generator so service-demand randomness is unchanged.
+    rng = random.Random(random_seed)
+    social_pairs = set()
+
+    for agent in agents:
+        possible_contacts = sorted(
+            [
+                other_agent
+                for other_agent in agents
+                if other_agent.agent_id != agent.agent_id
+                and (
+                    agent.household_id is None
+                    or other_agent.household_id != agent.household_id
+                )
+            ],
+            key=lambda item: item.agent_id,
+        )
+
+        contact_count = min(
+            rng.randint(0, 2),
+            len(possible_contacts),
+        )
+
+        for contact in rng.sample(possible_contacts, contact_count):
+            pair = tuple(sorted((agent.agent_id, contact.agent_id)))
+
+            if pair in social_pairs:
+                continue
+
+            social_pairs.add(pair)
+            relationship_type = rng.choice(["friend", "community"])
+
+            for source, target in (
+                (agent.agent_id, contact.agent_id),
+                (contact.agent_id, agent.agent_id),
+            ):
+                relationship = SocialRelationship(
+                    agent_id=source,
+                    contact_id=target,
+                    relationship_type=relationship_type,
+                )
+                relationship.validate()
+                relationships.append(relationship)
+
     return relationships
+
 
 def generate_remote_round_trip_travel_hours(random_seed):
     """Generate a reproducible illustrative remote travel time."""
@@ -597,7 +643,10 @@ def run_population_experiment(
         country_profile=country_profile,
     )
 
-    relationships = create_household_relationships(agents)
+    relationships = create_household_relationships(
+        agents,
+        random_seed=experiment_config.get("simulation", {}).get("random_seed"),
+    )
 
     household_config = experiment_config.get(
         "population", {}
@@ -659,7 +708,7 @@ def run_population_experiment(
         country_name=country_profile["country_name"],
         population_size=len(agents),
         duration_months=experiment_config["simulation"]["duration_months"],
-        random_seed=experiment_config["simulation"].get("random_seed"),
+        random_seed=experiment_config.get("simulation", {}).get("random_seed"),
         distribution_profile_id=distribution_config.get(
             "profile_id",
             "unknown",
