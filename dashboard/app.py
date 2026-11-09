@@ -1,7 +1,5 @@
 from pathlib import Path
 import sys
-import tempfile
-import uuid
 import math
 
 import pandas as pd
@@ -13,8 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from src.simulation.population_experiment import run_population_experiment
-from src.simulation.longitudinal_demo import run_experiment
-
+from dashboard.shared import load_longitudinal
 
 CONFIG = ROOT / "config" / "HH-EXP-001.json"
 DISTRIBUTION = ROOT / "config" / "population_baseline.synthetic.json"
@@ -66,15 +63,6 @@ def load_population(use_intervention):
         str(DISTRIBUTION),
         intervention_path,
     )
-
-
-@st.cache_resource(show_spinner="Running four-month interaction experiment...")
-def load_longitudinal(enable_llm):
-    database_path = (
-        Path(tempfile.gettempdir())
-        / f"hearing_dashboard_{uuid.uuid4().hex}.db"
-    )
-    return run_experiment(database_path, enable_llm=enable_llm)
 
 
 def distribution_frame(distribution):
@@ -249,8 +237,14 @@ def make_household_network(agents, relationships, household_id=None):
             )
 
     member_ids = set(positions)
-    edge_x, edge_y = [], []
+    edge_groups = {}
     seen_edges = set()
+
+    relationship_colours = {
+        "family": "#a78bfa",
+        "friend": "#34d399",
+        "community": "#38bdf8",
+    }
 
     for relationship in relationships:
         source = relationship.agent_id
@@ -264,21 +258,32 @@ def make_household_network(agents, relationships, household_id=None):
             continue
 
         seen_edges.add(edge)
+
+        relationship_type = relationship.relationship_type
+        edge_groups.setdefault(relationship_type, ([], []))
+
         x1, y1 = positions[source]
         x2, y2 = positions[target]
+
+        edge_x, edge_y = edge_groups[relationship_type]
         edge_x.extend([x1, x2, None])
         edge_y.extend([y1, y2, None])
 
     fig = go.Figure()
 
-    if edge_x:
+    for relationship_type, (edge_x, edge_y) in edge_groups.items():
         fig.add_trace(go.Scatter(
             x=edge_x,
             y=edge_y,
             mode="lines",
-            line=dict(width=1, color="#64748b"),
+            line=dict(
+                width=1.5,
+                color=relationship_colours.get(
+                    relationship_type, "#64748b"
+                ),
+            ),
+            name=relationship_type.replace("_", " ").title(),
             hoverinfo="skip",
-            showlegend=False,
         ))
 
     geography_colours = {
@@ -340,11 +345,134 @@ def make_household_network(agents, relationships, household_id=None):
         font=dict(color="#e5eaf3"),
         xaxis=dict(visible=False),
         yaxis=dict(visible=False, scaleanchor="x", scaleratio=1),
-        legend=dict(orientation="h", y=-0.04),
+        legend=dict(
+            orientation="h",
+            y=-0.04,
+            font=dict(color="#FFFFFF", size=14),
+            bgcolor="#0b1220",
+        ),
+        hovermode="closest",
+        )
+
+    return fig, len(seen_edges)
+
+def make_individual_network(agents, relationships, selected_agent_id):
+    """Display an individual and their connected social network."""
+
+    direct_contacts = set()
+
+    for relationship in relationships:
+        if relationship.agent_id == selected_agent_id:
+            direct_contacts.add(relationship.contact_id)
+        elif relationship.contact_id == selected_agent_id:
+            direct_contacts.add(relationship.agent_id)
+
+    network_ids = direct_contacts | {selected_agent_id}
+    contacts = sorted(direct_contacts)
+
+    positions = {selected_agent_id: (0, 0)}
+
+    for index, agent_id in enumerate(contacts):
+        angle = 2 * math.pi * index / max(len(contacts), 1)
+        positions[agent_id] = (
+            1.5 * math.cos(angle),
+            1.5 * math.sin(angle),
+        )
+
+    relationship_colours = {
+        "family": "#a78bfa",
+        "friend": "#34d399",
+        "community": "#38bdf8",
+    }
+
+    fig = go.Figure()
+    seen_edges = set()
+
+    for relationship in relationships:
+        source = relationship.agent_id
+        target = relationship.contact_id
+
+        if source not in network_ids or target not in network_ids:
+            continue
+
+        edge = tuple(sorted((source, target)))
+
+        if edge in seen_edges:
+            continue
+
+        seen_edges.add(edge)
+
+        x1, y1 = positions[source]
+        x2, y2 = positions[target]
+
+        colour = relationship_colours.get(
+            relationship.relationship_type, "#64748b"
+        )
+
+        fig.add_trace(go.Scatter(
+            x=[x1, x2],
+            y=[y1, y2],
+            mode="lines",
+            line=dict(width=2, color=colour),
+            hovertemplate=(
+                f"{source} ↔ {target}<br>"
+                f"Relationship: {relationship.relationship_type}<br>"
+                f"Trust: {relationship.trust:.2f}<br>"
+                f"Perceived support: {relationship.perceived_support:.2f}<br>"
+                f"Interactions/month: "
+                f"{relationship.interactions_per_month:.2f}"
+                "<extra></extra>"
+            ),
+            showlegend=False,
+        ))
+
+    agent_lookup = {agent.agent_id: agent for agent in agents}
+
+    for agent_id in network_ids:
+        agent = agent_lookup[agent_id]
+        x, y = positions[agent_id]
+        is_selected = agent_id == selected_agent_id
+
+        fig.add_trace(go.Scatter(
+            x=[x],
+            y=[y],
+            mode="markers+text",
+            text=[agent_id],
+            textposition="bottom center",
+            marker=dict(
+                size=38 if is_selected else 28,
+                color="#fbbf24" if is_selected else "#38bdf8",
+                line=dict(width=2, color="#e2e8f0"),
+            ),
+            customdata=[[
+                agent.summary()["age_group"],
+                agent.summary()["geography"],
+                agent.summary()["hearing_profile"],
+                agent.summary()["auditory_functional_status"],
+            ]],
+            hovertemplate=(
+                "<b>%{text}</b><br>"
+                "Age group: %{customdata[0]}<br>"
+                "Geography: %{customdata[1]}<br>"
+                "Hearing profile: %{customdata[2]}<br>"
+                "Functional status: %{customdata[3]}"
+                "<extra></extra>"
+            ),
+            showlegend=False,
+        ))
+
+    fig.update_layout(
+        height=650,
+        margin=dict(l=30, r=30, t=30, b=50),
+        paper_bgcolor="#0b1220",
+        plot_bgcolor="#0b1220",
+        font=dict(color="#e5eaf3"),
+        xaxis=dict(visible=False),
+        yaxis=dict(visible=False, scaleanchor="x", scaleratio=1),
         hovermode="closest",
     )
 
-    return fig, len(seen_edges)
+    return fig, len(seen_edges), len(direct_contacts)
 
 
 # Sidebar
@@ -523,9 +651,9 @@ with population_explorer_tab:
 with relationships_tab:
     st.subheader("Population household relationships")
     st.write(
-        "Explore simulated family relationships within the synthetic "
-        "population. These are household connections, not a complete "
-        "social network."
+        "Explore the simulated social network, including family, friendship "
+        "and community connections. These relationships are illustrative "
+        "simulation assumptions, not measured real-world relationships."
     )
 
     household_members = {}
@@ -535,14 +663,40 @@ with relationships_tab:
 
     household_ids = sorted(household_members)
     unique_connections = {
-        tuple(sorted((relationship.agent_id, relationship.contact_id)))
+        (
+            tuple(sorted((
+                relationship.agent_id,
+                relationship.contact_id,
+            ))),
+            relationship.relationship_type,
+        )
         for relationship in population.relationships
     }
+
+    relationship_counts = {
+        relationship_type: sum(
+            1 for _, kind in unique_connections
+            if kind == relationship_type
+        )
+        for relationship_type in ("family", "friend", "community")
+    }
+
+    connected_people = {
+        relationship.agent_id
+        for relationship in population.relationships
+    }
+
+    isolated_people = len(population.agents) - len(connected_people)
 
     metric1, metric2, metric3 = st.columns(3)
     metric1.metric("Population", f"{len(population.agents):,}")
     metric2.metric("Households", f"{len(household_ids):,}")
-    metric3.metric("Unique family connections", f"{len(unique_connections):,}")
+    metric3.metric("People without connections", isolated_people)
+
+    metric1, metric2, metric3 = st.columns(3)
+    metric1.metric("Family connections", relationship_counts["family"])
+    metric2.metric("Friend connections", relationship_counts["friend"])
+    metric3.metric("Community connections", relationship_counts["community"])
 
     household_options = ["All households"] + household_ids
 
@@ -569,8 +723,8 @@ with relationships_tab:
         st.caption(
             f"Showing {len(population.agents):,} people across "
             f"{len(household_ids):,} households, with "
-            f"{connection_count:,} unique family connections. "
-            "Each cluster represents one household."
+            f"{connection_count:,} unique social connections. "
+            "Colours distinguish relationship types."
         )
 
         geography_counts = (
@@ -674,13 +828,35 @@ with relationships_tab:
             )
 
     st.caption(
-        "Relationships are synthetic household-family assumptions. "
-        "They do not represent measured relationships or broader "
-        "friendship, community or service networks. Relationship values "
-        "are initial simulation values."
+        "Social relationships are synthetic simulation assumptions. "
+        "Trust, perceived support and interaction frequency are initial "
+        "model values, not measured real-world characteristics."
     )
 
+    st.divider()
+    st.markdown("#### Individual social network")
 
+    agent_ids = sorted(agent.agent_id for agent in population.agents)
+
+    selected_agent_id = st.selectbox(
+        "Select participant",
+        agent_ids,
+        key="individual_network_agent",
+    )
+
+    fig, connection_count, contact_count = make_individual_network(
+        population.agents,
+        population.relationships,
+        selected_agent_id,
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
+
+    st.caption(
+        f"{selected_agent_id} has {contact_count} direct contacts and "
+        f"{connection_count} unique connections shown. Connections between "
+        "direct contacts are included where recorded."
+    )
 # Timeline and interactions
 with timeline_tab:
     st.subheader("Individual experience over time")
@@ -797,6 +973,8 @@ with timeline_tab:
                     st.caption("Local LLM interpretation failed for this record.")
                 else:
                     st.caption("No local LLM interpretation was generated.")
+
+
 
     st.caption(
         "Monthly state values are recorded model outputs. Positive and negative "
