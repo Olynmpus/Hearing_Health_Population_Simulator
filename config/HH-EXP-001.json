@@ -61,7 +61,8 @@
         "assessment_subsidy_rate": 0.0,
         "mobile_outreach_enabled": false,
         "teleaudiology_enabled": false,
-        "family_encouragement_enabled": false
+        "family_encouragement_enabled": false,
+        "family_encouragement_effect": 0.0
     },
     "simulation": {
         "duration_months": 12,

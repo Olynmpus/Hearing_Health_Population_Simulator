@@ -214,6 +214,7 @@ def generate_service_demands(
     experiment_config,
     support_records,
     intervention=None,
+    relationships=None,
 ):
     """Generate illustrative annual service requests."""
 
@@ -222,6 +223,39 @@ def generate_service_demands(
     seed = experiment_config["simulation"].get("random_seed")
 
     probability = settings["annual_request_probability"]
+
+    access_settings = experiment_config.get("access", {})
+    family_enabled = access_settings.get(
+        "family_encouragement_enabled", False
+    )
+    family_effect = access_settings.get(
+        "family_encouragement_effect", 0.0
+    )
+
+    if not 0.0 <= family_effect <= 1.0:
+        raise ValueError(
+            "family_encouragement_effect must be between 0 and 1."
+        )
+
+    family_support = {}
+
+    if family_enabled:
+        support_values = {}
+
+        for relationship in relationships or []:
+            if (
+                relationship.relationship_type == "family"
+                and relationship.status == "active"
+            ):
+                support_values.setdefault(
+                    relationship.agent_id, []
+                ).append(relationship.perceived_support)
+
+        family_support = {
+            agent_id: sum(values) / len(values)
+            for agent_id, values in support_values.items()
+        }
+
     rng = random.Random(seed + 1 if seed is not None else None)
     remote_rng = random.Random(seed + 3 if seed is not None else None)
 
@@ -258,7 +292,20 @@ def generate_service_demands(
             else rng
         )
 
-        if not request_months or demand_rng.random() >= probability:
+        individual_probability = probability
+
+        if family_enabled:
+            support = family_support.get(record.agent_id, 0.5)
+            adjustment = family_effect * (support - 0.5) * 2
+            individual_probability = max(
+                0.0,
+                min(1.0, probability * (1.0 + adjustment)),
+            )
+
+        if (
+            not request_months
+            or demand_rng.random() >= individual_probability
+        ):
             continue
 
         request_month = demand_rng.choice(request_months)
@@ -570,6 +617,7 @@ def run_population_experiment(
         experiment_config,
         support_records,
         intervention=intervention,
+        relationships=relationships,
     )
     planned_schedule = create_experiment_service_schedule()
 
