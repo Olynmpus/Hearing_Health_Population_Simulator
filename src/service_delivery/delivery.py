@@ -25,6 +25,7 @@ class ServiceDelivery:
     agent_id: str
     service_id: str
     service_type: str
+    clinician_id: str
     delivery_month: int
     attendance_status: str
     delivery_status: str
@@ -36,6 +37,7 @@ class ServiceDelivery:
             "agent_id",
             "service_id",
             "service_type",
+            "clinician_id",
         ):
             value = getattr(self, name)
             if not isinstance(value, str) or not value.strip():
@@ -106,6 +108,7 @@ def create_service_delivery(
         agent_id=allocation.agent_id,
         service_id=allocation.service_id,
         service_type=allocation.service_type,
+        clinician_id=allocation.clinician_id,
         delivery_month=delivery_month,
         attendance_status=attendance_status,
         delivery_status=delivery_status,

@@ -79,6 +79,8 @@ class PopulationExperiment:
     relationships: list
     relationship_evidence_status: str | None = None
     intervention: object | None = None
+    remote_travel_hours: float | None = None
+    remote_travel_hours: float | None = None
 
     def summary(self):
         """Return population counts and profile distributions."""
@@ -125,6 +127,16 @@ class PopulationExperiment:
             delivery.delivery_status for delivery in deliveries
         )
 
+        allocations_by_clinician = Counter(
+            allocation.clinician_id
+            for allocation in allocations
+            if allocation.allocation_status == "allocated"
+        )
+
+        deliveries_by_clinician = Counter(
+            delivery.clinician_id for delivery in deliveries
+        )
+
         return {
             "experiment_id": self.experiment_id,
             "experiment_name": self.experiment_name,
@@ -140,6 +152,8 @@ class PopulationExperiment:
                     "intervention_id": self.intervention.intervention_id,
                     "name": self.intervention.name,
                     "evidence_status": self.intervention.evidence_status,
+                    "remote_round_trip_travel_hours": self.remote_travel_hours,
+                    "remote_round_trip_travel_hours": self.remote_travel_hours,
                 }
                 if self.intervention is not None
                 else None
@@ -152,6 +166,8 @@ class PopulationExperiment:
                 "unallocated": allocation_counts["unallocated"],
                 "attendance": dict(attendance_counts),
                 "delivery_outcomes": dict(delivery_counts),
+                "allocations_by_clinician": dict(allocations_by_clinician),
+                "deliveries_by_clinician": dict(deliveries_by_clinician),
             },
             "population_distributions": {
                 "age_group": distribution(
@@ -330,6 +346,7 @@ def create_remote_service_schedule():
         service_id="SERVICE-REMOTE-001",
         service_type="audiology_assessment",
         age_group="working_age_adult",
+        clinician_id="CLINICIAN-001",
         planned_trips_per_month=1,
         planned_appointments_per_month=2,
         planned_clinical_hours_per_month=2,
@@ -384,7 +401,6 @@ def allocate_monthly_service_demands(
         if (
             remote_schedule is not None
             and remote_travel_hours is not None
-            and remote_travel_hours <= 4
             and month in (0, 3, 6, 9)
         ):
             remote_demands = [
@@ -606,4 +622,5 @@ def run_population_experiment(
         relationships=relationships,
         relationship_evidence_status=relationship_evidence_status,
         intervention=intervention,
+        remote_travel_hours=remote_travel_hours,
     )

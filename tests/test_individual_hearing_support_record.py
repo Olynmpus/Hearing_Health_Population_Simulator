@@ -212,6 +212,7 @@ class TestIndividualServiceDeliveryRecords(unittest.TestCase):
             service_id="SERVICE-001",
             service_type="audiology_assessment",
             age_group="working_age_adult",
+            clinician_id="CLINICIAN-001",
             allocation_status="allocated",
             reason="matching_request_allocated",
         )
@@ -228,6 +229,7 @@ class TestIndividualServiceDeliveryRecords(unittest.TestCase):
             agent_id="PERSON-001",
             service_id="SERVICE-001",
             service_type="audiology_assessment",
+            clinician_id="CLINICIAN-001",
             delivery_month=2,
             attendance_status="attended",
             delivery_status="delivered",
@@ -270,6 +272,7 @@ class TestIndividualServiceDeliveryRecords(unittest.TestCase):
             service_id="SERVICE-001",
             service_type="audiology_assessment",
             age_group="working_age_adult",
+            clinician_id="CLINICIAN-001",
             allocation_status="allocated",
             reason="matching_request_allocated",
         ))
@@ -279,6 +282,7 @@ class TestIndividualServiceDeliveryRecords(unittest.TestCase):
             agent_id="PERSON-001",
             service_id="SERVICE-001",
             service_type="audiology_assessment",
+            clinician_id="CLINICIAN-001",
             delivery_month=2,
             attendance_status="attended",
             delivery_status="delivered",

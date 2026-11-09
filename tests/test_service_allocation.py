@@ -37,6 +37,7 @@ def make_schedule(appointments=2):
         service_id="SERVICE-001",
         service_type="audiology_assessment",
         age_group="working_age_adult",
+        clinician_id="CLINICIAN-001",
         planned_trips_per_month=1,
         planned_appointments_per_month=appointments,
         planned_clinical_hours_per_month=float(appointments),

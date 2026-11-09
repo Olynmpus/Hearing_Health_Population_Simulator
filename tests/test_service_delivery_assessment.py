@@ -24,6 +24,7 @@ def make_allocation(demand_id, status="allocated"):
         service_id="SERVICE-001",
         service_type="audiology_assessment",
         age_group="working_age_adult",
+        clinician_id="CLINICIAN-001",
         allocation_status=status,
         reason="test",
     )
@@ -35,6 +36,7 @@ def make_delivery(demand_id, attendance, delivery):
         agent_id=f"PERSON-{demand_id}",
         service_id="SERVICE-001",
         service_type="audiology_assessment",
+        clinician_id="CLINICIAN-001",
         delivery_month=2,
         attendance_status=attendance,
         delivery_status=delivery,

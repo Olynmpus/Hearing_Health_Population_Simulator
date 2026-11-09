@@ -14,6 +14,7 @@ def make_allocation(status="allocated"):
         service_id="SERVICE-001",
         service_type="audiology_assessment",
         age_group="working_age_adult",
+        clinician_id="CLINICIAN-001",
         allocation_status=status,
         reason="matching_request_allocated",
     )

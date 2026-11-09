@@ -15,6 +15,7 @@ class PlannedServiceSchedule:
     service_id: str
     service_type: str
     age_group: str
+    clinician_id: str
 
     planned_trips_per_month: int
     planned_appointments_per_month: int
@@ -30,6 +31,7 @@ class PlannedServiceSchedule:
             ("service_id", self.service_id),
             ("service_type", self.service_type),
             ("age_group", self.age_group),
+            ("clinician_id", self.clinician_id),
         ):
             if not isinstance(value, str) or not value.strip():
                 raise ValueError(f"{name} must be a non-empty string.")
@@ -212,6 +214,7 @@ def create_planned_service_schedule(
         service_id=capacity_assessment.service_id,
         service_type=capacity_assessment.service_type,
         age_group=capacity_assessment.age_group,
+        clinician_id=workforce.clinician_id,
         planned_trips_per_month=planned_trips_per_month,
         planned_appointments_per_month=planned_appointments_per_month,
         planned_clinical_hours_per_month=(

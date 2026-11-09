@@ -17,6 +17,7 @@ class ServiceAllocation:
     service_id: str
     service_type: str
     age_group: str
+    clinician_id: str
     allocation_status: str
     reason: str
 
@@ -27,6 +28,7 @@ class ServiceAllocation:
             "service_id",
             "service_type",
             "age_group",
+            "clinician_id",
             "reason",
         ):
             value = getattr(self, name)
@@ -130,6 +132,7 @@ def allocate_service_demand(
                 service_id=planned_schedule.service_id,
                 service_type=demand.service_type,
                 age_group=age_group,
+                clinician_id=planned_schedule.clinician_id,
                 allocation_status=status,
                 reason=reason,
             )
