@@ -20,6 +20,64 @@ The project aims to support structured exploration of questions such as:
 - How might outcomes differ between population groups and geographical settings?
 
 The project is under active development.
+## Architecture overview
+
+The architecture below illustrates the intended direction of the Hearing Health Population Simulator: individual agents communicate, interpret experiences from their own perspectives, develop relationships and memories, and contribute to population-level patterns over time.
+
+![Hearing Health Population Simulator Architecture Overview](documentation/Hearing%20Health%20Simulator%20Architecture%20Overview.png)
+
+### Agent interaction cycle
+
+The event-driven communication model is designed around an independent, multi-step interaction:
+
+1. An agent independently decides whether to initiate an interaction.
+2. The local LLM generates the initiating agent's message using that agent's own state and relevant history.
+3. The receiving agent interprets the message using its own context and perspective.
+4. The receiving agent independently decides whether and how to respond.
+5. The LLM generates the response using the responding agent's own context and the message it received.
+6. The original initiating agent interprets the response from its own perspective.
+7. Each participant's experience is recorded separately in their individual memory.
+
+The LLM supports natural-language generation and interpretation. Statistical and rule-based simulation logic remains responsible for decisions, validated experience assessment and numerical changes to agent states and relationships.
+
+An LLM interpretation is not proof of comprehension, agreement or a successful communication outcome.
+
+### Individual memory and social relationships
+
+Each agent maintains an individual interaction history. The memory model distinguishes between:
+
+- Messages received and messages sent
+- The agent's own interpretation of received messages
+- The other participant's response, where available
+- Interaction timing and evidence status
+
+Participants do not share a single interpretation of an interaction. Each agent's record represents its own perspective.
+
+Social relationships are represented separately from individual memories. The longer-term model is intended to explore how repeated interactions and experiences may influence relationships, create new connections and change the structure of social support networks over time.
+
+### Population-level simulation and development status
+
+The simulation is intended to connect individual communication experiences with broader population patterns, including help-seeking, service access, hearing health outcomes and social participation.
+
+The architecture diagram includes both implemented capabilities and planned development. In particular:
+
+**Implemented foundations**
+- Agent profiles and individual state representations
+- Independent interaction and response decisions
+- Local LLM message generation and recipient interpretation
+- Event-driven interaction recording
+- Separate memory records for each participant
+- Existing population, service and intervention modelling components
+
+**Further development**
+- Evidence-based assessment of individual communication experiences
+- Validated emotional and experiential responses
+- Controlled updates to agent states and relationship attributes
+- Dynamic social network growth and change
+- Longitudinal analysis of communication, help-seeking and population outcomes
+- Feedback between simulation findings and intervention scenarios
+
+These capabilities will be developed incrementally. The architecture represents the intended integrated model, not a claim that every component is currently operational.
 
 ## Research and modelling principles
 
@@ -143,7 +201,7 @@ Hearing_Health_Population_Simulator/
 │   ├── communication_vocabulary.md
 │   ├── hearing_support_and_funding_model.md
 │   └── Hearing Support Access and Individual.docx
-│
+││  ├── Hearing Health Simulator Architecture Overview.png
 ├── outputs/
 │   └── SQLite simulation databases
 │
