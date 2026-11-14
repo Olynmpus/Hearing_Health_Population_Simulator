@@ -5,7 +5,10 @@ from datetime import datetime, timedelta
 
 from src.simulation.event_model import SimulationEvent
 from src.behaviour.decision_model import choose_action
-from src.behaviour.communication_model import CommunicationEvent
+from src.behaviour.communication_model import (
+    CommunicationEvent,
+    CommunicationEnvironment,
+)
 from src.behaviour.communication_assessment import (
     assess_acoustic_conditions,
     assess_visual_support,
@@ -53,6 +56,19 @@ class EventDrivenSimulation:
 
         return self.current_time
 
+    def generate_communication_environment(self):
+        """Generate illustrative environmental conditions for an exchange."""
+
+        environment = CommunicationEnvironment(
+            background_noise=self.rng.uniform(0.0, 0.6),
+            distance_metres=self.rng.uniform(0.5, 5.0),
+            speaker_face_visible=self.rng.choice([True, False]),
+            written_information_available=self.rng.choice([True, False]),
+        )
+
+        environment.validate()
+
+        return environment
     def schedule_next_opportunity(self, relationship):
         """Calculate the next contact opportunity for a relationship."""
 
@@ -361,6 +377,7 @@ class EventDrivenSimulation:
             intended_message=None,
             perceived_message=None,
             listener_interpretation=None,
+            environment=self.generate_communication_environment(),
         )
 
         communication_assessment = {

@@ -41,6 +41,30 @@ class TestEventDrivenSimulation(unittest.TestCase):
 
         self.assertEqual(simulation.random_seed, 99)
 
+    def test_communication_environment_is_reproducible(self):
+        first = EventDrivenSimulation(self.experiment)
+        second = EventDrivenSimulation(self.experiment)
+
+        first_environment = (
+            first.generate_communication_environment()
+        )
+        second_environment = (
+            second.generate_communication_environment()
+        )
+
+        self.assertEqual(
+            first_environment,
+            second_environment,
+        )
+
+    def test_successive_communication_environments_can_differ(self):
+        simulation = EventDrivenSimulation(self.experiment)
+
+        first = simulation.generate_communication_environment()
+        second = simulation.generate_communication_environment()
+
+        self.assertNotEqual(first, second)
+          
     def test_advances_simulated_time(self):
         simulation = EventDrivenSimulation(self.experiment)
         result = simulation.advance_time(hours=3)
@@ -491,17 +515,44 @@ class TestEventDrivenSimulation(unittest.TestCase):
             "communication_assessment"
         ]
 
-        self.assertEqual(
+        self.assertGreaterEqual(
+            assessment["acoustic_conditions"],
+            0.0,
+        )
+        self.assertLessEqual(
             assessment["acoustic_conditions"],
             1.0,
         )
-        self.assertTrue(
-            assessment["visual_support"]["face_visible"]
+        self.assertIsInstance(
+            assessment["visual_support"]["face_visible"],
+            bool,
         )
-        self.assertFalse(
+        self.assertIsInstance(
             assessment["visual_support"][
                 "written_information_available"
-            ]
+            ],
+            bool,
+        )
+
+        self.assertGreaterEqual(
+            event.communication.environment.background_noise,
+            0.0,
+        )
+        self.assertLessEqual(
+            event.communication.environment.background_noise,
+            0.6,
+        )
+        self.assertGreaterEqual(
+            event.communication.environment.distance_metres,
+            0.5,
+        )
+        self.assertLessEqual(
+            event.communication.environment.distance_metres,
+            5.0,
+        )
+        self.assertEqual(
+            event.communication.environment.message_clarity,
+            1.0,
         )
         self.assertEqual(
             assessment["comprehension"],
