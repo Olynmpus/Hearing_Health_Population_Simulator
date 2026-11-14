@@ -1,10 +1,12 @@
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 
 from src.simulation.population_experiment import (
+    RELATIONSHIP_FREQUENCY_RANGES,
+    create_household_relationships,
     run_population_experiment,
 )
-
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
@@ -112,5 +114,58 @@ class TestPopulationExperiment(unittest.TestCase):
             places=1,
         )
 
+class TestRelationshipFrequencies(unittest.TestCase):
+
+    def test_reciprocal_relationships_share_valid_frequency(self):
+        agents = [
+            SimpleNamespace(agent_id="PERSON-001", household_id="HOME-001"),
+            SimpleNamespace(agent_id="PERSON-002", household_id="HOME-001"),
+            SimpleNamespace(agent_id="PERSON-003", household_id="HOME-002"),
+            SimpleNamespace(agent_id="PERSON-004", household_id="HOME-003"),
+            SimpleNamespace(agent_id="PERSON-005", household_id="HOME-004"),
+        ]
+
+        relationships = create_household_relationships(
+            agents,
+            random_seed=42,
+        )
+
+        relationship_lookup = {
+            (item.agent_id, item.contact_id): item
+            for item in relationships
+        }
+
+        for relationship in relationships:
+            with self.subTest(
+                relationship=(
+                    relationship.agent_id,
+                    relationship.contact_id,
+                )
+            ):
+                reciprocal = relationship_lookup[
+                    (relationship.contact_id, relationship.agent_id)
+                ]
+
+                self.assertEqual(
+                    relationship.relationship_type,
+                    reciprocal.relationship_type,
+                )
+                self.assertEqual(
+                    relationship.interactions_per_month,
+                    reciprocal.interactions_per_month,
+                )
+
+                minimum, maximum = RELATIONSHIP_FREQUENCY_RANGES[
+                    relationship.relationship_type
+                ]
+
+                self.assertGreaterEqual(
+                    relationship.interactions_per_month,
+                    minimum,
+                )
+                self.assertLessEqual(
+                    relationship.interactions_per_month,
+                    maximum,
+                )
 if __name__ == "__main__":
     unittest.main()

@@ -30,6 +30,13 @@ class TestCommunicationEvent(unittest.TestCase):
 
         self.assertTrue(event.validate())
 
+    def test_unknown_intended_message_is_valid(self):
+        event = self.create_event(
+            intended_message=None
+        )
+
+        self.assertTrue(event.validate())
+
     def test_unknown_perceived_message_is_valid(self):
         event = self.create_event(
             perceived_message=None

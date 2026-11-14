@@ -25,6 +25,14 @@ from src.interventions.loader import load_intervention
 from src.service_capacity.planned_schedule import PlannedServiceSchedule
 from src.agents.relationships import SocialRelationship
 
+
+RELATIONSHIP_FREQUENCY_RANGES = {
+    "family": (4, 60),
+    "friend": (0, 9),
+    "community": (0, 4),
+    "health_service": (0, 2),
+}
+
 def create_household_relationships(agents, random_seed=None):
     """Create family and illustrative non-family social relationships."""
 
@@ -36,23 +44,31 @@ def create_household_relationships(agents, random_seed=None):
 
     relationships = []
 
-    # Preserve existing reciprocal family relationships.
-    for household_members in households.values():
-        for agent in household_members:
-            for other_agent in household_members:
-                if agent.agent_id == other_agent.agent_id:
-                    continue
+    rng = random.Random(random_seed)
 
-                relationship = SocialRelationship(
-                    agent_id=agent.agent_id,
-                    contact_id=other_agent.agent_id,
-                    relationship_type="family",
+    # Create reciprocal family relationships with shared frequency.
+    for household_members in households.values():
+        for index, agent in enumerate(household_members):
+            for other_agent in household_members[index + 1:]:
+                frequency = rng.randint(
+                    *RELATIONSHIP_FREQUENCY_RANGES["family"]
                 )
-                relationship.validate()
-                relationships.append(relationship)
+
+                for source, target in (
+                    (agent, other_agent),
+                    (other_agent, agent),
+                ):
+                    relationship = SocialRelationship(
+                        agent_id=source.agent_id,
+                        contact_id=target.agent_id,
+                        relationship_type="family",
+                        interactions_per_month=frequency,
+                    )
+                    relationship.validate()
+                    relationships.append(relationship)
 
     # Use a separate random generator so service-demand randomness is unchanged.
-    rng = random.Random(random_seed)
+    
     social_pairs = set()
 
     for agent in agents:
@@ -81,7 +97,11 @@ def create_household_relationships(agents, random_seed=None):
                 continue
 
             social_pairs.add(pair)
+    
             relationship_type = rng.choice(["friend", "community"])
+            frequency = rng.randint(
+                *RELATIONSHIP_FREQUENCY_RANGES[relationship_type]
+            )
 
             for source, target in (
                 (agent.agent_id, contact.agent_id),
@@ -91,6 +111,7 @@ def create_household_relationships(agents, random_seed=None):
                     agent_id=source,
                     contact_id=target,
                     relationship_type=relationship_type,
+                    interactions_per_month=frequency,
                 )
                 relationship.validate()
                 relationships.append(relationship)

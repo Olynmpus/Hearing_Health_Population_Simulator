@@ -70,11 +70,14 @@ class CommunicationEvent:
                 "Speaker and listener must be different agents."
             )
 
-        if not isinstance(self.intended_message, str):
-            raise ValueError("intended_message must be a string.")
+        if self.intended_message is not None:
+            if not isinstance(self.intended_message, str):
+                raise ValueError(
+                    "intended_message must be a string or None."
+                )
 
-        if not self.intended_message.strip():
-            raise ValueError("intended_message cannot be empty.")
+            if not self.intended_message.strip():
+                raise ValueError("intended_message cannot be empty.")
 
         optional_messages = {
             "perceived_message": self.perceived_message,
