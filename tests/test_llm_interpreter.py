@@ -4,8 +4,11 @@ import unittest
 import math
 from unittest.mock import patch, MagicMock
 
-from src.behaviour.llm_interpreter import interpret_interaction
-
+from src.behaviour.llm_interpreter import (
+    interpret_interaction,
+    generate_message,
+    interpret_recipient_message,
+)
 
 class TestLLMInterpreter(unittest.TestCase):
 
@@ -164,6 +167,164 @@ class TestLLMInterpreter(unittest.TestCase):
             "context_serialization_failed",
         )
         self.assertIsNone(result.text)
+
+    def test_generate_message_timeout(self):
+        with patch(
+            "src.behaviour.llm_interpreter.subprocess.run",
+            side_effect=subprocess.TimeoutExpired("ollama", 60),
+        ):
+            result = generate_message(
+                "PERSON-001",
+                {"situation": "family conversation"},
+            )
+
+        self.assertEqual(result.status, "failed")
+        self.assertEqual(result.error, "timeout")
+        self.assertIsNone(result.text)
+
+    def test_generate_message_invalid_json(self):
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = "not valid json"
+        mock_result.stderr = ""
+
+        with patch(
+            "src.behaviour.llm_interpreter.subprocess.run",
+            return_value=mock_result,
+        ):
+            result = generate_message(
+                "PERSON-001",
+                {"situation": "family conversation"},
+            )
+
+        self.assertEqual(result.status, "failed")
+        self.assertEqual(result.error, "invalid_json_response")
+
+    def test_generate_message_missing_message(self):
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = json.dumps({"other": "value"})
+        mock_result.stderr = ""
+
+        with patch(
+            "src.behaviour.llm_interpreter.subprocess.run",
+            return_value=mock_result,
+        ):
+            result = generate_message(
+                "PERSON-001",
+                {"situation": "family conversation"},
+            )
+
+        self.assertEqual(result.status, "failed")
+        self.assertEqual(result.error, "missing_message")
+
+    def test_generate_message_valid_response(self):
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = json.dumps({
+            "message": "I've been having difficulty following conversations."
+        })
+        mock_result.stderr = ""
+
+        with patch(
+            "src.behaviour.llm_interpreter.subprocess.run",
+            return_value=mock_result,
+        ):
+            result = generate_message(
+                "PERSON-001",
+                {"situation": "family conversation"},
+            )
+
+        self.assertEqual(result.status, "generated")
+        self.assertEqual(
+            result.text,
+            "I've been having difficulty following conversations.",
+        )
+        self.assertEqual(result.model, "qwen3:1.7b")
+        self.assertIsNone(result.error)
+
+    def test_recipient_interpretation_valid_response(self):
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = json.dumps({
+            "perceived_message": "The speaker is having difficulty.",
+            "interpretation": "They may be asking for understanding.",
+            "comprehension_assessment": "understood",
+        })
+        mock_result.stderr = ""
+
+        with patch(
+            "src.behaviour.llm_interpreter.subprocess.run",
+            return_value=mock_result,
+        ):
+            result = interpret_recipient_message(
+                "PERSON-002",
+                "I've been having difficulty following conversations.",
+                {"situation": "family conversation"},
+            )
+
+        self.assertEqual(result.status, "interpreted")
+        self.assertEqual(
+            result.perceived_message,
+            "The speaker is having difficulty.",
+        )
+        self.assertEqual(
+            result.interpretation,
+            "They may be asking for understanding.",
+        )
+        self.assertEqual(result.comprehension_assessment, "understood")
+        self.assertEqual(result.model, "qwen3:1.7b")
+        self.assertIsNone(result.error)
+
+    def test_recipient_interpretation_rejects_invalid_comprehension(self):
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = json.dumps({
+            "perceived_message": "The speaker needs help.",
+            "interpretation": "They are asking for assistance.",
+            "comprehension_assessment": "certain",
+        })
+        mock_result.stderr = ""
+
+        with patch(
+            "src.behaviour.llm_interpreter.subprocess.run",
+            return_value=mock_result,
+        ):
+            result = interpret_recipient_message(
+                "PERSON-002",
+                "I've been having difficulty following conversations.",
+                {"situation": "family conversation"},
+            )
+
+        self.assertEqual(result.status, "failed")
+        self.assertEqual(result.error, "invalid_interpretation_fields")
+        self.assertIsNone(result.comprehension_assessment)
+
+    def test_recipient_interpretation_allows_not_established(self):
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = json.dumps({
+            "perceived_message": "The speaker said something about conversations.",
+            "interpretation": "The intended meaning is unclear.",
+            "comprehension_assessment": "not_established",
+        })
+        mock_result.stderr = ""
+
+        with patch(
+            "src.behaviour.llm_interpreter.subprocess.run",
+            return_value=mock_result,
+        ):
+            result = interpret_recipient_message(
+                "PERSON-002",
+                "I've been having difficulty following conversations.",
+                {"situation": "family conversation"},
+            )
+
+        self.assertEqual(result.status, "interpreted")
+        self.assertEqual(
+            result.comprehension_assessment,
+            "not_established",
+        )
 
 if __name__ == "__main__":
     unittest.main()

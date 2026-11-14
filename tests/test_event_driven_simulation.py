@@ -1,10 +1,12 @@
 import unittest
 from datetime import datetime
 from types import SimpleNamespace
-
+import tempfile
+from pathlib import Path
 from src.agents.relationships import SocialRelationship
 from src.simulation.event_driven_simulation import EventDrivenSimulation
 from src.simulation.event_model import SimulationEvent
+from src.behaviour.communication_model import CommunicationEvent
 
 
 from unittest.mock import patch
@@ -41,6 +43,92 @@ class TestEventDrivenSimulation(unittest.TestCase):
 
         self.assertEqual(simulation.random_seed, 99)
 
+    def test_records_individual_interaction_memories(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            simulation = EventDrivenSimulation(
+                self.experiment,
+                start_time=datetime(2026, 1, 1),
+                memory_path=Path(temp_dir) / "memory.db",
+            )
+
+            simulation.current_time = datetime(2026, 3, 1)
+
+            initiation = SimpleNamespace(
+                event_id="EVENT-000001",
+                communication=CommunicationEvent(
+                    speaker_id="PERSON-001",
+                    listener_id="PERSON-002",
+                    intended_message="Could you help me?",
+                    perceived_message="Could you assist?",
+                    listener_interpretation=(
+                        "The person is asking me for help."
+                    ),
+                ),
+            )
+
+            response = SimpleNamespace(
+                communication=CommunicationEvent(
+                    speaker_id="PERSON-002",
+                    listener_id="PERSON-001",
+                    intended_message="Of course.",
+                    perceived_message="They are willing to help.",
+                    listener_interpretation=(
+                        "The other person is offering help."
+                    ),
+                ),
+            )
+
+            simulation.record_interaction_memories(
+                initiation,
+                response,
+            )
+
+            recipient_history = simulation.memory.get_history(
+                "PERSON-002"
+            )
+            initiator_history = simulation.memory.get_history(
+                "PERSON-001"
+            )
+
+            self.assertEqual(len(recipient_history), 1)
+            self.assertEqual(len(initiator_history), 1)
+
+            recipient_record = recipient_history[0]
+            initiator_record = initiator_history[0]
+
+            self.assertEqual(
+                recipient_record["actual_message"],
+                "Could you help me?",
+            )
+            self.assertEqual(
+                recipient_record["agent_interpretation"],
+                "The person is asking me for help.",
+            )
+            self.assertEqual(
+                recipient_record["additional_details"]["response_sent"],
+                "Of course.",
+            )
+
+            self.assertEqual(
+                initiator_record["actual_message"],
+                "Of course.",
+            )
+            self.assertEqual(
+                initiator_record["agent_interpretation"],
+                "The other person is offering help.",
+            )
+            self.assertEqual(
+                initiator_record["additional_details"]["message_sent"],
+                "Could you help me?",
+            )
+
+            self.assertEqual(recipient_record["month"], 2)
+            self.assertEqual(initiator_record["month"], 2)
+
+            self.assertEqual(recipient_record["outcome"], "not_assessed")
+            self.assertEqual(initiator_record["outcome"], "not_assessed")
+            self.assertIsNone(recipient_record["emotional_appraisal"])
+            self.assertIsNone(initiator_record["emotional_appraisal"])
     def test_communication_environment_is_reproducible(self):
         first = EventDrivenSimulation(self.experiment)
         second = EventDrivenSimulation(self.experiment)
@@ -64,7 +152,7 @@ class TestEventDrivenSimulation(unittest.TestCase):
         second = simulation.generate_communication_environment()
 
         self.assertNotEqual(first, second)
-          
+
     def test_advances_simulated_time(self):
         simulation = EventDrivenSimulation(self.experiment)
         result = simulation.advance_time(hours=3)
@@ -132,15 +220,209 @@ class TestEventDrivenSimulation(unittest.TestCase):
             [],
         )
 
+
     def make_agent(self, agent_id):
         state = SimpleNamespace(
             communication_confidence=0.6,
             social_participation=0.7,
             help_seeking_intention=0.5,
             trust_in_services=0.5,
+            perceived_support=0.5,
+            perceived_loneliness=0.2,
             frustration=0.2,
         )
-        return SimpleNamespace(agent_id=agent_id, state=state)
+
+        communication_profile = SimpleNamespace(
+            to_dict=lambda: {}
+        )
+
+        profile = SimpleNamespace(
+            age_group="working_age_adult",
+            hearing_profile="moderate",
+            auditory_functional_status="unknown",
+            geography="regional",
+            role="individual",
+            communication_profile=communication_profile,
+        )
+
+        return SimpleNamespace(
+            agent_id=agent_id,
+            profile=profile,
+            state=state,
+        )
+
+    @patch("src.simulation.event_driven_simulation.generate_message")
+    def test_generates_initiation_message(self, mock_generate):
+        relationship = SocialRelationship(
+            "PERSON-001", "PERSON-002", "family"
+        )
+
+        experiment = SimpleNamespace(
+            agents=[
+                self.make_agent("PERSON-001"),
+                self.make_agent("PERSON-002"),
+            ],
+            relationships=[relationship],
+            random_seed=42,
+        )
+
+        simulation = EventDrivenSimulation(experiment)
+        context = {"agent": {"agent_id": "PERSON-001"}}
+        simulation.build_agent_context = lambda *args: context
+
+        mock_generate.return_value = SimpleNamespace(
+            text="Hello, how are you?",
+            status="generated",
+        )
+
+        event = SimulationEvent(
+            event_id="EVENT-000001",
+            timestamp=simulation.current_time,
+            event_type="communication_initiation",
+            participants=["PERSON-001", "PERSON-002"],
+            initiating_agent_id="PERSON-001",
+            action="initiate_conversation",
+            decision_basis={},
+            description="Test initiation.",
+        )
+
+        result = simulation.generate_initiation_message(event)
+
+        self.assertEqual(result.text, "Hello, how are you?")
+        mock_generate.assert_called_once_with(
+            agent_id="PERSON-001",
+            interaction_context=context,
+        )
+
+    @patch(
+        "src.simulation.event_driven_simulation.interpret_recipient_message"
+    )
+    def test_interprets_initiation_message_from_recipient_perspective(
+        self, mock_interpret
+    ):
+        relationship = SocialRelationship(
+            "PERSON-002", "PERSON-001", "family"
+        )
+
+        experiment = SimpleNamespace(
+            agents=[
+                self.make_agent("PERSON-001"),
+                self.make_agent("PERSON-002"),
+            ],
+            relationships=[relationship],
+            random_seed=42,
+        )
+
+        simulation = EventDrivenSimulation(experiment)
+        context = {"agent": {"agent_id": "PERSON-002"}}
+        simulation.build_agent_context = lambda *args: context
+
+        mock_interpret.return_value = SimpleNamespace(
+            perceived_message="Hello",
+            interpretation="The sender is greeting me.",
+            comprehension_assessment="understood",
+            status="interpreted",
+        )
+
+        event = SimulationEvent(
+            event_id="EVENT-000001",
+            timestamp=simulation.current_time,
+            event_type="communication_initiation",
+            participants=["PERSON-001", "PERSON-002"],
+            initiating_agent_id="PERSON-001",
+            action="initiate_conversation",
+            decision_basis={},
+            description="Test initiation.",
+        )
+
+        result = simulation.interpret_initiation_message(
+            event,
+            "Hello, how are you?",
+        )
+
+        self.assertEqual(
+            result.interpretation,
+            "The sender is greeting me.",
+        )
+        mock_interpret.assert_called_once_with(
+            recipient_id="PERSON-002",
+            message="Hello, how are you?",
+            interaction_context=context,
+        )
+
+    @patch(
+        "src.simulation.event_driven_simulation.interpret_recipient_message"
+    )
+    @patch("src.simulation.event_driven_simulation.generate_message")
+    def test_prepares_initiation_communication(
+        self, mock_generate, mock_interpret
+    ):
+        relationship = SocialRelationship(
+            "PERSON-001", "PERSON-002", "family"
+        )
+
+        experiment = SimpleNamespace(
+            agents=[
+                self.make_agent("PERSON-001"),
+                self.make_agent("PERSON-002"),
+            ],
+            relationships=[relationship],
+            random_seed=42,
+        )
+
+        simulation = EventDrivenSimulation(experiment)
+        simulation.build_agent_context = lambda *args: {}
+
+        mock_generate.return_value = SimpleNamespace(
+            text="Hello, how are you?",
+            model="qwen3:1.7b",
+            status="generated",
+            error=None,
+        )
+
+        mock_interpret.return_value = SimpleNamespace(
+            perceived_message="Hello",
+            interpretation="The sender is greeting me.",
+            comprehension_assessment="understood",
+            model="qwen3:1.7b",
+            status="interpreted",
+            error=None,
+        )
+
+        event = SimulationEvent(
+            event_id="EVENT-000001",
+            timestamp=simulation.current_time,
+            event_type="communication_initiation",
+            participants=["PERSON-001", "PERSON-002"],
+            initiating_agent_id="PERSON-001",
+            action="initiate_conversation",
+            decision_basis={},
+            description="Test initiation.",
+        )
+
+        result = simulation.prepare_initiation_communication(event)
+
+        self.assertTrue(result)
+        self.assertEqual(
+            event.communication.intended_message,
+            "Hello, how are you?",
+        )
+        self.assertEqual(
+            event.communication.perceived_message,
+            "Hello",
+        )
+        self.assertEqual(
+            event.communication.listener_interpretation,
+            "The sender is greeting me.",
+        )
+        self.assertEqual(
+            event.communication.initial_outcome,
+            "not_assessed",
+        )
+        self.assertEqual(
+            event.communication.final_outcome,
+            "not_assessed",
+        )
 
     def test_makes_initiation_decision_for_existing_relationship(self):
         relationship = SocialRelationship(
@@ -214,6 +496,7 @@ class TestEventDrivenSimulation(unittest.TestCase):
             first_result["decision"]["action"],
             second_result["decision"]["action"],
         )
+
     @patch("src.simulation.event_driven_simulation.choose_action")
     def test_records_event_when_agent_initiates(self, mock_choose):
         relationship = SocialRelationship(
@@ -462,8 +745,12 @@ class TestEventDrivenSimulation(unittest.TestCase):
             second_result["decision"]["action"],
         )    
 
+    @patch("src.simulation.event_driven_simulation.interpret_recipient_message")
     @patch("src.simulation.event_driven_simulation.choose_action")
-    def test_records_recipient_response_event(self, mock_choose):
+    @patch("src.simulation.event_driven_simulation.generate_message")
+    def test_records_recipient_response_event(
+        self, mock_generate, mock_choose, mock_interpret
+    ):
         relationships = [
             SocialRelationship(
                 "PERSON-001", "PERSON-002", "family"
@@ -492,6 +779,21 @@ class TestEventDrivenSimulation(unittest.TestCase):
             "decision_basis": {"context": "response"},
         }
 
+        mock_generate.return_value = SimpleNamespace(
+            text="Hello, how are you?",
+            model="test-model",
+            status="generated",
+            error=None,
+        )
+
+        mock_interpret.return_value = SimpleNamespace(
+            perceived_message="A greeting",
+            interpretation="The recipient understands the greeting.",
+            comprehension_assessment="understood",
+            model="test-model",
+            status="interpreted",
+            error=None,
+        )
         simulation = EventDrivenSimulation(experiment)
 
         initiation = SimulationEvent(
@@ -503,7 +805,63 @@ class TestEventDrivenSimulation(unittest.TestCase):
             action="initiate_conversation",
         )
 
+        initiation.communication = CommunicationEvent(
+            speaker_id="PERSON-001",
+            listener_id="PERSON-002",
+            intended_message="Could you help me?",
+            perceived_message="Could you assist?",
+            listener_interpretation="The person is asking me for help.",
+        )
+
         event = simulation.run_response_event(initiation)
+
+        # Verify response direction.
+        # Verify response direction.
+        assert event.communication.speaker_id == "PERSON-002"
+        assert event.communication.listener_id == "PERSON-001"
+
+        # Verify the responding agent received its own interpretation.
+        generated_context = mock_generate.call_args.kwargs[
+            "interaction_context"
+        ]
+
+        assert generated_context["agent"]["agent_id"] == "PERSON-002"
+        assert generated_context["incoming_communication"]["message"] == (
+            "Could you help me?"
+        )
+        assert generated_context["incoming_communication"]["perceived_message"] == (
+            "Could you assist?"
+        )
+        assert generated_context["incoming_communication"]["interpretation"] == (
+            "The person is asking me for help."
+        )
+
+        # Verify the generated response was recorded.
+        assert event.communication.intended_message == "Hello, how are you?"
+
+        # Verify the original initiator's interpretation was recorded.
+        assert event.communication.perceived_message == "A greeting"
+        assert (
+            event.communication.listener_interpretation
+            == "The recipient understands the greeting."
+        )
+
+        # Verify interpretation used the original initiator's perspective.
+        mock_interpret.assert_called_once()
+        interpretation_args = mock_interpret.call_args.kwargs
+
+        assert interpretation_args["recipient_id"] == "PERSON-001"
+        assert interpretation_args["message"] == "Hello, how are you?"
+        assert (
+            interpretation_args["interaction_context"]["agent"]["agent_id"]
+            == "PERSON-001"
+        )
+
+        # Verify the interpretation is not treated as validated evidence.
+        assert (
+            event.decision_basis["recipient_interpretation"]["evidence_status"]
+            == "llm_interpretation_not_verified"
+        )
 
         self.assertEqual(event.event_id, "EVENT-000001")
         self.assertEqual(event.event_type, "communication_response")
@@ -625,10 +983,13 @@ class TestEventDrivenSimulation(unittest.TestCase):
         self.assertEqual(events, [])
         self.assertEqual(simulation.events, [])
 
+    @patch.object(
+        EventDrivenSimulation, "prepare_initiation_communication"
+    )
     @patch.object(EventDrivenSimulation, "run_response_event")
     @patch.object(EventDrivenSimulation, "run_initiation_event")
     def test_interaction_cycle_returns_initiation_only(
-        self, mock_initiation, mock_response
+        self, mock_initiation, mock_response, mock_prepare
     ):
         simulation = EventDrivenSimulation(self.experiment)
 
@@ -643,16 +1004,20 @@ class TestEventDrivenSimulation(unittest.TestCase):
 
         mock_initiation.return_value = initiation
         mock_response.return_value = None
+        mock_prepare.return_value = True
 
         events = simulation.run_interaction_cycle()
 
         self.assertEqual(events, [initiation])
         mock_response.assert_called_once_with(initiation)
 
+    @patch.object(
+        EventDrivenSimulation, "prepare_initiation_communication"
+    )
     @patch.object(EventDrivenSimulation, "run_response_event")
     @patch.object(EventDrivenSimulation, "run_initiation_event")
     def test_interaction_cycle_returns_both_events(
-        self, mock_initiation, mock_response
+        self, mock_initiation, mock_response, mock_prepare
     ):
         simulation = EventDrivenSimulation(self.experiment)
 
@@ -676,7 +1041,7 @@ class TestEventDrivenSimulation(unittest.TestCase):
 
         mock_initiation.return_value = initiation
         mock_response.return_value = response
-
+        mock_prepare.return_value = True
         events = simulation.run_interaction_cycle()
 
         self.assertEqual(events, [initiation, response])
